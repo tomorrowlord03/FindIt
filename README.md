@@ -16,7 +16,7 @@ The browser stores demo data in `localStorage`. Use **Reset demo data** to resto
 From this folder, run:
 
 ```text
-node tests/algorithms.test.mjs
+node algorithms.test.mjs
 ```
 
 The matching score is intentionally explainable: category (25), colour (20), location (20), date (up to 15), and shared description terms (up to 20). The app uses a small cosine-style token similarity function in JavaScript, so it stays dependency-free and matches the project's HTML/CSS/JavaScript-only constraint.
@@ -25,6 +25,6 @@ The matching score is intentionally explainable: category (25), colour (20), loc
 
 - `index.html` - accessible single-page interface
 - `styles.css` - responsive visual design
-- `js/app.js` - navigation, forms, storage, rendering, and status workflow
-- `js/algorithms.js` - matching and text-similarity logic
-- `tests/algorithms.test.mjs` - lightweight runnable checks
+- `app.js` - navigation, forms, storage, rendering, and status workflow
+- `algorithms.js` - matching and text-similarity logic
+- `algorithms.test.mjs` - lightweight runnable checks

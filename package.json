@@ -2,6 +2,6 @@
   "name": "findit",
   "private": true,
   "scripts": {
-    "test": "node tests/algorithms.test.mjs"
+    "test": "node algorithms.test.mjs"
   }
 }
