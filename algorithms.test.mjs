@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {tokenize,textSimilarity,scoreMatch,findMatches}=require('../js/algorithms.js');
+assert.deepEqual(tokenize('Black, wireless earbuds!'),['black','wireless','earbuds']);
+assert.equal(textSimilarity('black wireless earbuds','black wireless earbuds'),1);
+const lost={type:'lost',category:'Electronics',color:'Black',location:'Library',date:'2026-09-12',title:'wireless earphones',description:'black bluetooth earbuds'};
+const found={type:'found',category:'Electronics',color:'Black',location:'Library',date:'2026-09-12',title:'black earbuds',description:'wireless earphones'};
+assert.ok(scoreMatch(lost,found).score>=80);
+assert.equal(findMatches([lost,found]).length,1);
+console.log('FindIt algorithm checks passed.');

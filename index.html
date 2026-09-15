@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="FindIt helps campus communities report, search, and match lost and found items.">
+  <title>FindIt | Campus lost and found</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#dashboard" aria-label="FindIt home"><span class="brand-mark">F</span><span>FindIt</span></a>
+    <nav class="nav-links" aria-label="Main navigation">
+      <button class="nav-link active" data-view="dashboard">Dashboard</button>
+      <button class="nav-link" data-view="reports">Browse reports</button>
+      <button class="nav-link" data-view="matches">Possible matches <span id="matchBadge" class="badge">0</span></button>
+      <button class="nav-link" data-view="admin">Coordinator</button>
+    </nav>
+    <button id="resetData" class="text-button" type="button">Reset demo data</button>
+  </header>
+
+  <main class="shell">
+    <section id="dashboard" class="view active-view">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">SSTC campus helper</p>
+          <h1>Lost something? Start here.</h1>
+          <p class="hero-copy">Report an item, browse campus reports, and let FindIt surface the closest matches.</p>
+          <div class="hero-actions"><button class="primary" data-view="report">Report an item</button><button class="secondary" data-view="reports">Search reports</button></div>
+        </div>
+        <div class="hero-note"><span class="note-icon">✦</span><strong>Simple by design</strong><p>Every match shows why it was suggested. No black box.</p></div>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="section-heading"><div><p class="eyebrow">Latest activity</p><h2>Recent reports</h2></div><button class="link-button" data-view="reports">View all →</button></div>
+      <div id="recentReports" class="report-grid"></div>
+    </section>
+
+    <section id="report" class="view">
+      <div class="page-heading"><p class="eyebrow">New report</p><h1>Tell us what happened</h1><p>Add the details you remember. More detail gives the matcher more to work with.</p></div>
+      <form id="reportForm" class="form-card">
+        <div class="segmented"><label><input type="radio" name="type" value="lost" checked><span>I lost something</span></label><label><input type="radio" name="type" value="found"><span>I found something</span></label></div>
+        <div class="form-grid">
+          <label>Item name<input name="title" required maxlength="60" placeholder="e.g. Black wireless earphones"></label>
+          <label>Category<select name="category" required><option value="">Choose a category</option><option>Identity card</option><option>Electronics</option><option>Books & stationery</option><option>Keys</option><option>Wallet / money</option><option>Clothing</option><option>Other</option></select></label>
+          <label>Colour<input name="color" required maxlength="30" placeholder="e.g. Black"></label>
+          <label>Location<input name="location" required maxlength="80" placeholder="e.g. Library, Block A"></label>
+          <label>Date<input name="date" type="date" required></label>
+          <label>Contact name<input name="contact" required maxlength="50" placeholder="Your name"></label>
+          <label class="full">Description<textarea name="description" required maxlength="500" rows="4" placeholder="Add brand, marks, stickers, or anything distinctive..."></textarea></label>
+          <label class="full">Contact detail <span class="muted">(visible only to the coordinator)</span><input name="contactDetail" required maxlength="100" placeholder="Email or phone number"></label>
+        </div>
+        <div class="form-footer"><p class="muted">Your report stays on this browser for this demo.</p><button class="primary" type="submit">Publish report</button></div>
+      </form>
+    </section>
+
+    <section id="reports" class="view">
+      <div class="page-heading inline-heading"><div><p class="eyebrow">Campus board</p><h1>Browse reports</h1></div><button class="primary" data-view="report">+ New report</button></div>
+      <div class="filters"><input id="searchInput" type="search" placeholder="Search name, description, colour, location..." aria-label="Search reports"><select id="typeFilter"><option value="all">All report types</option><option value="lost">Lost only</option><option value="found">Found only</option></select><select id="categoryFilter"><option value="all">All categories</option></select><select id="statusFilter"><option value="all">All statuses</option><option>Open</option><option>Possible Match</option><option>Claimed</option><option>Returned</option></select></div>
+      <div id="reportList" class="report-list"></div>
+    </section>
+
+    <section id="matches" class="view">
+      <div class="page-heading"><p class="eyebrow">Matching desk</p><h1>Possible matches</h1><p>FindIt compares category, location, colour, date, and description similarity. Higher scores are stronger suggestions.</p></div>
+      <div id="matchList" class="match-list"></div>
+    </section>
+
+    <section id="admin" class="view">
+      <div class="page-heading"><p class="eyebrow">Coordinator view</p><h1>Review and resolve</h1><p>Use this view to move reports through the simple claim and return workflow.</p></div>
+      <div class="admin-card"><div class="admin-head"><strong>Report queue</strong><span id="adminCount" class="muted"></span></div><div id="adminList"></div></div>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="js/algorithms.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
