@@ -25,6 +25,11 @@ g++ -std=c++17 -O2 -o findit-server main.cpp -lsqlite3 -lpthread -ldl
 
 echo "==> Configuring systemd service..."
 sudo cp "$APP_DIR/deploy/findit.service" /etc/systemd/system/findit.service
+
+# Generate a strong random admin password and inject it into the service file
+ADMIN_PW=$(openssl rand -base64 24)
+sudo sed -i "s|CHANGE_ME_AT_DEPLOY|${ADMIN_PW}|" /etc/systemd/system/findit.service
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now findit
 sudo systemctl restart findit
@@ -43,6 +48,12 @@ else
 fi
 
 PUBLIC_IP=$(curl -s http://checkip.amazonaws.com || curl -s https://ifconfig.me || echo "your-server-ip")
-echo "========================================================="
+echo "==========================================================="
 echo " FindIt is live at: http://${PUBLIC_IP}/"
-echo "========================================================="
+echo ""
+echo " Coordinator login:"
+echo "   Username: admin"
+echo "   Password: ${ADMIN_PW}"
+echo ""
+echo " SAVE THIS PASSWORD — it will not be shown again."
+echo "==========================================================="

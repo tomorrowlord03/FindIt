@@ -262,9 +262,16 @@ $('#adminChangePassForm')?.addEventListener('submit', async event => {
   }
 
   try {
+    if (!adminToken) {
+      toast('Please log in as Coordinator first.');
+      return;
+    }
     const res = await fetch('/admin/change-password', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminToken}`
+      },
       body: JSON.stringify({ username: 'admin', oldPassword, newPassword })
     });
     if (res.ok) {

@@ -49,6 +49,7 @@ using SOCKET = int;
 #include <ctime>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -365,6 +366,39 @@ static std::string newToken() {
   return s;
 }
 
+// --------------------------------------------------------- rate limiting ----
+// ponytail: in-memory per-IP rate limit, resets on restart. Upgrade to Redis if multi-instance.
+
+static const int kMaxAuthAttempts = 5;
+static const int kAuthWindowSec = 60;
+
+struct RateEntry { int count; time_t windowStart; };
+static std::map<std::string, RateEntry> g_rateLimits;
+static std::mutex g_rateMutex;
+
+static std::string clientIp(const Request& req) {
+  auto it = req.headers.find("x-real-ip");
+  if (it != req.headers.end() && !it->second.empty()) return it->second;
+  it = req.headers.find("x-forwarded-for");
+  if (it != req.headers.end() && !it->second.empty()) {
+    size_t comma = it->second.find(',');
+    return comma == std::string::npos ? it->second : it->second.substr(0, comma);
+  }
+  return "unknown";
+}
+
+static bool rateLimitExceeded(const std::string& ip) {
+  std::lock_guard<std::mutex> lock(g_rateMutex);
+  time_t now = time(nullptr);
+  auto it = g_rateLimits.find(ip);
+  if (it == g_rateLimits.end() || now - it->second.windowStart > kAuthWindowSec) {
+    g_rateLimits[ip] = {1, now};
+    return false;
+  }
+  it->second.count++;
+  return it->second.count > kMaxAuthAttempts;
+}
+
 // -------------------------------------------------------------- static ------
 
 static const std::map<std::string, std::string>& mimeTypes() {
@@ -512,6 +546,12 @@ static bool routeApi(const Request& req, Response& res, std::string& note) {
 
   // POST /admin/login
   if (p == "/admin/login" && m == "POST") {
+    std::string ip = clientIp(req);
+    if (rateLimitExceeded(ip)) {
+      res.code = 429; res.status = "Too Many Requests";
+      res.body = errorJson("too many login attempts, try again later");
+      return true;
+    }
     std::string username, password;
     jsonField(req.body, "username", username);
     jsonField(req.body, "password", password);
@@ -541,6 +581,16 @@ static bool routeApi(const Request& req, Response& res, std::string& note) {
 
   // POST /admin/change-password
   if (p == "/admin/change-password" && m == "POST") {
+    if (!sessionValid(bearerToken(req))) {
+      res.code = 401; res.status = "Unauthorized"; res.body = errorJson("login required to change password");
+      return true;
+    }
+    std::string ip = clientIp(req);
+    if (rateLimitExceeded(ip)) {
+      res.code = 429; res.status = "Too Many Requests";
+      res.body = errorJson("too many attempts, try again later");
+      return true;
+    }
     std::string username, oldPassword, newPassword;
     jsonField(req.body, "username", username);
     jsonField(req.body, "oldPassword", oldPassword);
@@ -554,13 +604,9 @@ static bool routeApi(const Request& req, Response& res, std::string& note) {
       res = badRequest("new password must be at least 4 characters");
       return true;
     }
+    // ponytail: password kept in memory only, no plaintext on disk. Resets to
+    // ADMIN_PASSWORD env var on restart — acceptable for single-admin setup.
     g_adminPass = newPassword;
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(g_db, "INSERT OR REPLACE INTO settings (key, val) VALUES ('admin_password', ?)", -1, &st, nullptr) == SQLITE_OK) {
-      sqlite3_bind_text(st, 1, newPassword.c_str(), -1, SQLITE_TRANSIENT);
-      sqlite3_step(st);
-      sqlite3_finalize(st);
-    }
     res.body = "{\"message\":\"Password updated successfully\"}";
     return true;
   }
@@ -727,17 +773,6 @@ int main() {
       " key TEXT PRIMARY KEY,"
       " val TEXT);"
       "CREATE INDEX IF NOT EXISTS reports_createdAt ON reports(createdAt);");
-
-  {
-    sqlite3_stmt* st = nullptr;
-    if (sqlite3_prepare_v2(g_db, "SELECT val FROM settings WHERE key = 'admin_password'", -1, &st, nullptr) == SQLITE_OK) {
-      if (sqlite3_step(st) == SQLITE_ROW) {
-        const unsigned char* val = sqlite3_column_text(st, 0);
-        if (val) g_adminPass = reinterpret_cast<const char*>(val);
-      }
-      sqlite3_finalize(st);
-    }
-  }
 
   int purged = purgeExpired();
   if (purged > 0) printf("findit: retention removed %d report(s) older than 7 days\n", purged);

@@ -62,14 +62,21 @@ Resources:
           su - ubuntu -c "git clone https://github.com/tomorrowlord03/FindIt.git /home/ubuntu/FindIt"
           su - ubuntu -c "cd /home/ubuntu/FindIt/server/cpp && g++ -std=c++17 -O2 -o findit-server main.cpp -lsqlite3 -lpthread -ldl"
 
-          # Setup systemd
+          # Setup systemd with auto-generated admin password
           cp /home/ubuntu/FindIt/deploy/findit.service /etc/systemd/system/findit.service
+          ADMIN_PW=$(openssl rand -base64 24)
+          sed -i "s|CHANGE_ME_AT_DEPLOY|${ADMIN_PW}|" /etc/systemd/system/findit.service
           systemctl daemon-reload
           systemctl enable --now findit
 
           # Setup nginx
           cp /home/ubuntu/FindIt/deploy/nginx-findit.conf /etc/nginx/sites-available/default
           systemctl restart nginx
+
+          # Log the generated password to cloud-init output (visible in EC2 console system log)
+          echo "FindIt admin password: ${ADMIN_PW}" >> /home/ubuntu/findit-credentials.txt
+          chown ubuntu:ubuntu /home/ubuntu/findit-credentials.txt
+          chmod 600 /home/ubuntu/findit-credentials.txt
 
       Tags:
         - Key: Name

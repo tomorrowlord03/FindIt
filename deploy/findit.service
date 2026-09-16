@@ -12,8 +12,11 @@ RestartSec=5
 Environment=PORT=3000
 Environment=FINDIT_DB=/home/ubuntu/FindIt/server/cpp/findit.db
 Environment=FINDIT_WEB=/home/ubuntu/FindIt
+Environment=ADMIN_PASSWORD=CHANGE_ME_AT_DEPLOY
 
 PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/ubuntu/FindIt/server/cpp
 
 [Install]
 WantedBy=multi-user.target
