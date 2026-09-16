@@ -13,8 +13,6 @@ Environment=PORT=3000
 Environment=FINDIT_DB=/home/ubuntu/FindIt/server/cpp/findit.db
 Environment=FINDIT_WEB=/home/ubuntu/FindIt
 
-# Security sandbox
-ProtectHome=read-only
 PrivateTmp=true
 
 [Install]

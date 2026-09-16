@@ -30,11 +30,13 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 using SOCKET = int;
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR (-1)
 #define closesocket close
 #define SD_SEND SHUT_WR
+#define WSAGetLastError() (errno)
 #endif
 
 #include <sqlite3.h>
