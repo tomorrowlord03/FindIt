@@ -784,8 +784,13 @@ int main() {
   }
 
   sockaddr_in bound{};
+#ifdef _WIN32
   int boundLen = sizeof bound;
   getsockname(server, (sockaddr*)&bound, &boundLen);
+#else
+  socklen_t boundLen = sizeof bound;
+  getsockname(server, (sockaddr*)&bound, &boundLen);
+#endif
   int actualPort = ntohs(bound.sin_port);
 
   printf("findit: listening on port=%d db=%s web=%s\n", actualPort, dbPath.c_str(), g_webRoot.c_str());
