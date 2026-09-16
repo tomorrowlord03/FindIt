@@ -213,7 +213,8 @@ $('#adminLoginForm').addEventListener('submit', async event => {
       toast('Coordinator authenticated successfully.');
       await fetchReports();
     } else {
-      toast('Invalid credentials. Check username/password.');
+      const data = await res.json().catch(() => ({}));
+      toast(data.error || (res.status === 429 ? 'Too many attempts. Please wait 1 minute.' : 'Invalid credentials. Check username/password.'));
     }
   } catch (err) {
     toast('Login request failed.');

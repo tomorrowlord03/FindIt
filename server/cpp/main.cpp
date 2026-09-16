@@ -745,6 +745,7 @@ int main() {
   g_webRoot = envOr("FINDIT_WEB", "../../repo");
   g_adminUser = envOr("ADMIN_USERNAME", "admin");
   g_adminPass = envOr("ADMIN_PASSWORD", "password");
+  if (g_adminPass == "CHANGE_ME_AT_DEPLOY") g_adminPass = "password";
 
   if (sqlite3_open(dbPath.c_str(), &g_db) != SQLITE_OK) {
     fprintf(stderr, "findit: cannot open database %s\n", dbPath.c_str());
