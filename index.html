@@ -41,7 +41,7 @@
         <div class="segmented"><label><input type="radio" name="type" value="lost" checked><span>I lost something</span></label><label><input type="radio" name="type" value="found"><span>I found something</span></label></div>
         <div class="form-grid">
           <label>Item name<input name="title" required maxlength="60" placeholder="e.g. Black wireless earphones"></label>
-          <label>Category<select name="category" required><option value="">Choose a category</option><option>Identity card</option><option>Electronics</option><option>Books & stationery</option><option>Keys</option><option>Wallet / money</option><option>Clothing</option><option>Other</option></select></label>
+          <label>Category<select name="category" required><option value="Electronics" selected>Electronics</option><option value="Identity card">Identity card</option><option value="Books & stationery">Books & stationery</option><option value="Keys">Keys</option><option value="Wallet / money">Wallet / money</option><option value="Clothing">Clothing</option><option value="Other">Other</option></select></label>
           <label>Colour<input name="color" required maxlength="30" placeholder="e.g. Black"></label>
           <label>Location<input name="location" required maxlength="80" placeholder="e.g. Library, Block A"></label>
           <label>Date<input name="date" type="date" required></label>
@@ -50,7 +50,7 @@
           <label class="full">Description<textarea name="description" required maxlength="500" rows="4" placeholder="Add brand, marks, stickers, or anything distinctive..."></textarea></label>
           <label class="full">Contact detail <span class="muted">(visible only to the coordinator)</span><input name="contactDetail" required maxlength="100" placeholder="Email or phone number"></label>
         </div>
-        <div class="form-footer"><p class="muted">Your report stays on this browser for this demo.</p><button class="primary" type="submit">Publish report</button></div>
+        <div class="form-footer"><p class="muted">Reports are synchronized with the campus C++ & SQLite backend (7-day retention).</p><button class="primary" type="submit">Publish report</button></div>
       </form>
     </section>
 
@@ -67,7 +67,35 @@
 
     <section id="admin" class="view">
       <div class="page-heading"><p class="eyebrow">Coordinator view</p><h1>Review and resolve</h1><p>Use this view to move reports through the simple claim and return workflow.</p></div>
-      <div class="admin-card"><div class="admin-head"><strong>Report queue</strong><span id="adminCount" class="muted"></span></div><div id="adminList"></div></div>
+      <div id="adminLoginCard" class="form-card" style="margin-bottom:20px;">
+        <h3>Coordinator Login</h3>
+        <p class="muted">Enter administrator credentials to view private contact details and update statuses.</p>
+        <form id="adminLoginForm" class="form-grid" style="grid-template-columns:1fr 1fr auto;align-items:end;">
+          <label>Username<input name="username" value="admin" required></label>
+          <label>Password<input name="password" type="password" value="password" required></label>
+          <button class="primary" type="submit" style="height:44px;">Login</button>
+          <div style="grid-column:1 / -1;margin-top:6px;">
+            <button id="toggleChangePassBtn" class="text-button" type="button" style="color:var(--blue);font-size:14px;">Forgot or change password?</button>
+          </div>
+        </form>
+      </div>
+      <div id="adminChangePassCard" class="form-card" style="margin-bottom:20px;display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>Change Coordinator Password</h3>
+          <button id="cancelChangePassBtn" class="text-button" type="button" style="color:var(--muted);">✕ Close</button>
+        </div>
+        <p class="muted">Update your coordinator password on the basis of your current (old) password.</p>
+        <form id="adminChangePassForm" class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end;">
+          <label>Old password<input name="oldPassword" type="password" required></label>
+          <label>New password<input name="newPassword" type="password" minlength="4" required></label>
+          <label>Confirm new<input name="confirmPassword" type="password" minlength="4" required></label>
+          <button class="primary" type="submit" style="height:44px;">Update</button>
+        </form>
+      </div>
+      <div class="admin-card">
+        <div class="admin-head"><strong>Report queue</strong><div style="display:flex;gap:12px;align-items:center;"><span id="adminCount" class="muted"></span><button id="adminChangePassNavBtn" class="text-button" type="button" style="display:none;color:var(--blue);font-weight:600;">Change password</button><button id="adminLogout" class="text-button" type="button" style="display:none;color:var(--blue);font-weight:700;">Logout</button></div></div>
+        <div id="adminList"></div>
+      </div>
     </section>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

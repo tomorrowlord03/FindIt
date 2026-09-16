@@ -1,0 +1,20 @@
+# Build output
+build/
+*.exe
+*.o
+*.obj
+*.tar.gz
+
+# Databases & local state
+*.db
+*.db-journal
+*.log
+
+# Dependencies
+node_modules/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
