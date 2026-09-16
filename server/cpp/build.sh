@@ -23,7 +23,19 @@ if [ ! -f build/sqlite3.o ]; then
     -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_DQS=0
 fi
 
+if [ -f /usr/include/sqlite3.h ] && [ ! -f build/sqlite3.o ]; then
+  # On Linux with system sqlite3 installed
+  g++ -std=c++17 -O2 -o build/findit-server main.cpp -lsqlite3 -lpthread -ldl
+  echo "built build/findit-server with system sqlite3"
+  exit 0
+fi
+
+LIBS="-lpthread -ldl"
+if [[ "${OSTYPE:-}" == "msys" || "${OSTYPE:-}" == "win32" || "${OSTYPE:-}" == "cygwin" ]]; then
+  LIBS="-lws2_32 -lbcrypt -static"
+fi
+
 g++ -std=c++17 -O2 -o build/findit-server main.cpp build/sqlite3.o \
-  -Ibuild -lws2_32 -lbcrypt -static
+  -Ibuild $LIBS
 
 echo "built build/findit-server"

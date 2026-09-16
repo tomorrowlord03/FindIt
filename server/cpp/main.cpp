@@ -18,10 +18,24 @@
 //
 // Retention: reports older than 7 days are purged at startup and every hour (idempotent).
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <bcrypt.h>
+#else
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+using SOCKET = int;
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
+#define closesocket close
+#define SD_SEND SHUT_WR
+#endif
 
 #include <sqlite3.h>
 
@@ -330,10 +344,18 @@ static bool sessionValid(const std::string& token) {
 
 static std::string newToken() {
   unsigned char buf[32];
+#ifdef _WIN32
   if (BCryptGenRandom(nullptr, buf, sizeof buf, BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
     fprintf(stderr, "findit: could not read secure random bytes\n");
     exit(1);
   }
+#else
+  std::ifstream urandom("/dev/urandom", std::ios::binary);
+  if (!urandom || !urandom.read(reinterpret_cast<char*>(buf), sizeof buf)) {
+    fprintf(stderr, "findit: could not read /dev/urandom\n");
+    exit(1);
+  }
+#endif
   static const char* hex = "0123456789abcdef";
   std::string s;
   s.reserve(64);
@@ -595,9 +617,16 @@ static void drainClient(SOCKET client) {
 }
 
 static void handleClient(SOCKET client) {
+#ifdef _WIN32
   DWORD timeout = 10000;   // a stalled client must not hold the thread forever
   setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout);
   setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeout, sizeof timeout);
+#else
+  struct timeval timeout{};
+  timeout.tv_sec = 10;
+  setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+  setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+#endif
 
   std::string raw;
   char buffer[8192];
@@ -724,11 +753,13 @@ int main() {
     }
   }).detach();
 
+#ifdef _WIN32
   WSADATA wsa;
   if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
     fprintf(stderr, "findit: winsock init failed\n");
     return 1;
   }
+#endif
   SOCKET server = socket(AF_INET, SOCK_STREAM, 0);
   if (server == INVALID_SOCKET) {
     fprintf(stderr, "findit: socket() failed\n");
