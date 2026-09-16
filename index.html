@@ -69,8 +69,8 @@
         <h3>Coordinator Login</h3>
         <p class="muted">Enter administrator credentials to view private contact details and update statuses.</p>
         <form id="adminLoginForm" class="form-grid" style="grid-template-columns:1fr 1fr auto;align-items:end;">
-          <label>Username<input name="username" value="admin" required></label>
-          <label>Password<input name="password" type="password" value="password" required></label>
+          <label>Username<input name="username" placeholder="Coordinator username" required autocomplete="username"></label>
+          <label>Password<input name="password" type="password" placeholder="Enter password" required autocomplete="current-password"></label>
           <button class="primary" type="submit" style="height:44px;">Login</button>
           <div style="grid-column:1 / -1;margin-top:6px;">
             <button id="toggleChangePassBtn" class="text-button" type="button" style="color:var(--blue);font-size:14px;">Forgot or change password?</button>

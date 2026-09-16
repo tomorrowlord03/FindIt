@@ -272,7 +272,7 @@ $('#adminChangePassForm')?.addEventListener('submit', async event => {
       form.reset();
       $('#adminChangePassCard').style.display = 'none';
       const passInput = $('#adminLoginForm input[name="password"]');
-      if (passInput) passInput.value = newPassword;
+      if (passInput) passInput.value = '';
     } else {
       const err = await res.json().catch(() => ({}));
       toast(err.error ? `Error: ${err.error}` : 'Failed to change password. Check old password.');
