@@ -4,29 +4,21 @@ Description: '1-Click deployment of FindIt Campus Lost and Found on AWS EC2 (Ubu
 Parameters:
   InstanceType:
     Type: String
-    Default: t2.micro
+    Default: t3.micro
     AllowedValues:
-      - t2.micro
       - t3.micro
+      - t2.micro
       - t3.small
-    Description: EC2 Instance Type (t2.micro is Free Tier eligible)
+      - t3.nano
+    Description: EC2 Instance Type (t3.micro is the Free Tier eligible type in modern AWS accounts/regions)
+  AmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id'
+    Description: Official Ubuntu 24.04 LTS AMI resolved dynamically by AWS for your region
   KeyName:
     Type: String
     Default: ''
     Description: (Optional) Name of an existing EC2 KeyPair to enable SSH access
-
-Mappings:
-  RegionMap:
-    us-east-1:
-      AMI: ami-0e86e20dae9224db8
-    us-east-2:
-      AMI: ami-0fb653ca2d3203ac1
-    us-west-2:
-      AMI: ami-008fe2fc65e7164b8
-    ap-south-1:
-      AMI: ami-0dee22c13ea7a9a67
-    eu-central-1:
-      AMI: ami-0084a47cc718c111a
 
 Conditions:
   HasKeyName: !Not [!Equals [!Ref KeyName, '']]
@@ -54,7 +46,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !Ref InstanceType
-      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      ImageId: !Ref AmiId
       KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
       SecurityGroupIds:
         - !Ref FindItSecurityGroup
