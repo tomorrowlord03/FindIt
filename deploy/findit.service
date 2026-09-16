@@ -1,0 +1,21 @@
+[Unit]
+Description=FindIt Campus Lost & Found C++ REST API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/FindIt/server/cpp
+ExecStart=/home/ubuntu/FindIt/server/cpp/findit-server
+Restart=always
+RestartSec=5
+Environment=PORT=3000
+Environment=FINDIT_DB=/home/ubuntu/FindIt/server/cpp/findit.db
+Environment=FINDIT_WEB=/home/ubuntu/FindIt
+
+# Security sandbox
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
