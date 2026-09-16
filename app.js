@@ -283,11 +283,6 @@ $('#adminChangePassForm')?.addEventListener('submit', async event => {
   }
 });
 
-// Reset / Refresh Data button
-$('#resetData').addEventListener('click', async () => {
-  await fetchReports();
-  toast('Reports refreshed from campus server.');
-});
 
 // Status Change -> PATCH /admin/reports/:id
 document.addEventListener('change', async event => {
