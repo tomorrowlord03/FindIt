@@ -339,7 +339,7 @@ document.addEventListener('click', event => {
     if (item.contactDetail) {
       alert(`Coordinator contact for ${item.title}:\nName: ${item.contact}\nDetail: ${item.contactDetail}`);
     } else {
-      alert(`Contact detail for "${item.title}" is restricted.\nPlease log in as Coordinator to view private contact details.`);
+      alert(`Contact detail for "${item.title}" is restricted.\nPlease contact coordinator to view details or Login as coordinator.`);
     }
   }
 });
