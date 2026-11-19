@@ -9,6 +9,15 @@ build/
 *.db
 *.db-journal
 *.log
+data/
+*.sqlite*
+*.db-*
+.env
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
 
 # Dependencies
 node_modules/

@@ -1,0 +1,37 @@
+[Unit]
+Description=FindIt Python server
+After=network.target
+
+[Service]
+Type=simple
+User=findit
+Group=findit
+WorkingDirectory=/opt/findit
+ExecStart=/usr/bin/python3 /opt/findit/server.py
+Environment=FINDIT_HOST=127.0.0.1
+Environment=FINDIT_PORT=3000
+Environment=FINDIT_ORIGIN=https://sstcfindit.me,https://www.sstcfindit.me
+Environment=FINDIT_TRUST_PROXY=1
+Environment=FINDIT_USERNAME=admin
+Environment=FINDIT_DB=/var/lib/findit/reports.sqlite3
+Environment=FINDIT_PRIVATE_DAYS=7
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/findit/findit.env
+StateDirectory=findit
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

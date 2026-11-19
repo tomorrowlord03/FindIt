@@ -1,114 +1,140 @@
-# FindIt | Campus Lost & Found System
+# FindIt
 
-FindIt is a full-stack campus lost-and-found portal designed for privacy, explainable matching, and fast local deployment.
+FindIt is the campus lost-and-found system for SSTC. Students report lost or found items on a public board, while personal contact details and private verification clues remain hidden from public view. When an owner recognises an item, they submit a private claim with an ownership clue. A campus coordinator reviews the evidence, confirms the handover, and closes linked lost and found reports together.
 
-It features a high-performance **C++17 & SQLite REST API backend** paired with a clean, dependency-free **vanilla HTML/CSS/JavaScript single-page frontend**.
+The backend is built entirely with Python 3.10+ standard library modules and SQLite. It requires no third-party package installations.
 
----
+## Run the pitch demo (Windows)
 
-## Key Features
+From the repository folder, start the automated demo:
 
-1. **Item Reporting & Public Board**:
-   - Students can publish lost or found item reports with categorization, location, color, timestamp, and contact information.
-   - Public board allows filtering by keywords, item category, and lifecycle status (`Open`, `Possible Match`, `Claimed`, `Returned`).
-
-2. **Explainable Matching Engine**:
-   - Compares lost and found reports using weighted heuristic attributes (category: 25, colour: 20, location: 20, date proximity: 15, description token overlap: 20).
-   - Surfaces matches with a transparent breakdown explaining *why* an item was suggested.
-
-3. **Privacy-Preserving Coordinator Dashboard**:
-   - Student contact details (`contactDetail`) are strictly redacted from anonymous public listings.
-   - Campus coordinators authenticate via `/admin/login` using constant-time verified credentials and a secure session token.
-   - Authenticated coordinators can view private contact details and update report lifecycle status (`Open` → `Claimed` → `Returned`).
-   - Includes **Change Password / Password Reset** functionality (`POST /admin/change-password`) allowing administrators to update their password on the basis of their old password, persisted directly in SQLite.
-
-4. **Automated 7-Day Data Retention**:
-   - In accordance with campus data privacy guidelines, reports older than 7 days are automatically purged both upon server startup and via an hourly background worker.
-
----
-
-## Architecture & Tech Stack
-
-- **Backend**: C++17 REST API (`server/cpp/main.cpp`) utilizing native Winsock2 networking and embedded SQLite3 (`findit.db`). Serves both API endpoints and the static frontend on port 3000.
-- **Frontend**: Vanilla JavaScript (`app.js`, `algorithms.js`), semantic HTML5 (`index.html`), and CSS3 (`styles.css`). Zero external JavaScript framework dependencies.
-- **Database**: SQLite3 relational database with indexed timestamps for efficient retention purges.
-
-### REST API Endpoints
-
-| Method | Endpoint | Description | Auth Required |
-|---|---|---|---|
-| `POST` | `/reports` | Submit a new lost/found report | No |
-| `GET` | `/reports` | Retrieve active reports (contactDetail hidden unless authenticated) | Optional (Bearer Token) |
-| `POST` | `/admin/login` | Authenticate coordinator (`username`, `password`) | No |
-| `POST` | `/admin/change-password` | Update admin password (`username`, `oldPassword`, `newPassword`) | No (Validates Old Password) |
-| `PATCH` | `/admin/reports/:id` | Update report status (`Open`, `Possible Match`, `Claimed`, `Returned`) | Yes (Bearer Token) |
-
----
-
-## Getting Started
-
-### 1. Build & Run the C++ Backend Server
-
-#### Prerequisites
-- A C++17 compiler (e.g. GCC / MinGW `g++`)
-- SQLite3 amalgamation (or run `./build.sh` on Unix/Git Bash)
-
-#### Building on Windows (PowerShell / MinGW)
 ```powershell
-# Compile the server:
-g++ -std=c++17 -O2 -o server/cpp/build/findit-server.exe server/cpp/main.cpp server/cpp/build/sqlite3.o -Iserver/cpp/build -lws2_32 -lbcrypt -static
-
-# Run the server:
-& server/cpp/build/findit-server.exe
+python demo.py
 ```
 
-#### Building on Linux / macOS
+Or using the Python launcher:
+
+```powershell
+py demo.py
+```
+
+On macOS or Linux:
+
 ```bash
-cd server/cpp
-bash build.sh
-./build/findit-server
+python3 demo.py
 ```
 
-The server listens on **`http://127.0.0.1:3000/`** and automatically serves the frontend web app.
+The script:
+1. Creates a temporary, disposable SQLite database pre-populated with sample reports.
+2. Starts the server on an available local port and prints the local URL, the coordinator username (`coordinator`), and a randomly generated temporary password.
+3. Automatically opens the demo in your default browser.
 
-### 2. Default Coordinator Credentials
-- **Username**: `admin`
-- **Password**: `password` (changeable in the coordinator portal via "Change password")
+To start without opening the browser automatically:
 
----
+```powershell
+python demo.py --no-browser
+```
 
-## Running Automated Tests
+Press `Ctrl+C` in the terminal to stop the server and delete the temporary database.
 
-### Frontend Matching Tests
+## Run a persistent local server
+
+For persistent local operation, run `server.py` directly. Configuration is handled through environment variables:
+
+| Variable | Required / Default | Description |
+|---|---|---|
+| `FINDIT_PASSWORD` | **Required** (min 12 chars) | Password for coordinator sign-in. |
+| `FINDIT_DB` | `~/.findit/reports.sqlite3` | SQLite database file path (must be outside the repository folder). |
+| `FINDIT_HOST` | `127.0.0.1` | Host address to bind. |
+| `FINDIT_PORT` | `5500` | Port to listen on. |
+| `FINDIT_USERNAME` | `coordinator` | Username for coordinator sign-in. |
+| `FINDIT_PRIVATE_DAYS` | `30` (min 7) | Days to retain private report records and history before purging. |
+| `FINDIT_ORIGIN` | Unset (HTTP origin inferred from `Host`) | Comma-separated origins matched exactly for CSRF enforcement. Use HTTP(S) scheme and host, with an optional port and no path or trailing slash. The session cookie uses `Secure` when every configured origin is HTTPS. |
+| `FINDIT_TRUST_PROXY` | Unset (disabled) | Set to `1` behind a trusted reverse proxy that overwrites `X-Real-IP` with the client address. The server uses this address for coordinator sign-in and password-change rate limits. |
+| `FINDIT_DESK` | `""` (empty string) | Pickup desk location displayed across the UI. |
+| `FINDIT_HOURS` | `""` (empty string) | Pickup hours displayed across the UI. |
+| `FINDIT_CONTACT` | `""` (empty string) | Coordinator contact details displayed across the UI. |
+
+### PowerShell example (Windows)
+
+```powershell
+$env:FINDIT_PASSWORD = "<choose your own>"; python server.py
+```
+
+### Bash example (macOS / Linux)
+
 ```bash
-node algorithms.test.mjs
+export FINDIT_PASSWORD="<choose your own>"; python3 server.py
 ```
 
-### Backend C++ / SQLite Integration Tests
-With the C++ server built:
+*Note: Choose your own unique password of at least 12 characters. Never put real passwords in the README or source control.*
+
+## Coordinator setup
+
+1. Open the application and navigate to `#admin` (or click **Coordinator** in the top navigation).
+2. Sign in using the coordinator username (`coordinator` by default) and the password set in `FINDIT_PASSWORD`.
+3. In the **Change password** form, enter your current password and a new password of at least 12 characters. Saving keeps the current session signed in and signs out other coordinator sessions. The new password is stored as a salted PBKDF2 hash in the database and takes precedence over `FINDIT_PASSWORD` on subsequent server starts.
+4. Click **Lock view** to end the session immediately and protect private records.
+
+## Tests
+
+Run the test suites from the repository folder:
+
+- **Matcher algorithm tests**:
+  ```bash
+  node algorithms.test.mjs
+  ```
+- **Journey and backup/restore tests**:
+  ```bash
+  python -m unittest discover -s tests -v
+  ```
+  *(macOS/Linux: `python3 -m unittest discover -s tests -v`).*
+
+## Pitch walkthrough (5 minutes)
+
+Follow these steps with two browser windows using fictional demo data:
+
+1. **Student A reports a found item**:
+   - In window 1, go to **Report an item** (`#report`) and choose **I found something**.
+   - Public details: Item name "Silver calculator", Category "Electronics", Location "Physics Lab 2", Date (today), Description "Scientific calculator left on a bench".
+   - Private details: Name "Student A", Contact "student-a@example.invalid", Private clue "Sticker of a blue rocket on back cover".
+   - Submit the form and note the generated report reference (`FI-...`).
+2. **Student B searches and files a private claim**:
+   - In window 2 (a private window), go to **Browse reports** (`#reports`).
+   - Search for "calculator" or "Physics Lab". Open the "Silver calculator" report card and click **This may be mine**.
+   - Enter claimant details: Name "Student B", Contact "student-b@example.invalid", and ownership evidence: "Has a blue rocket sticker on the back battery cover".
+   - Submit the claim and note the private claim reference (`CL-...`).
+3. **Inspect possible matches**:
+   - Click **Possible matches** (`#matches`) to see suggested report pairings evaluated by campus keywords, category, and location.
+4. **Coordinator confirms handover**:
+   - In window 1, go to **Coordinator** (`#admin`) and sign in.
+   - In the review queue, locate the pending claim (`CL-...`). Inspect Student B's evidence against Student A's private clue.
+   - Under **Review claim**, choose **Confirm item returned**, optionally link a corresponding lost report, provide a verification note, and click **Save decision**.
+   - The found report closes as **Returned**. Any linked lost report closes as **Returned** too.
+5. **Verify privacy and lock view**:
+   - Click **Lock view** to log out of the coordinator desk.
+   - Check the public **Browse reports** and **Dashboard** views: the item shows as "Returned", but contact details and private clues are never shown on the public board.
+
+## Pickup desk, hours and retention
+
+The demo uses placeholder values:
+- Desk: `"Demo pickup desk"`
+- Hours: `"By appointment (demo)"`
+- Contact: `demo@example.invalid`
+
+SSTC's real desk location, hours, and retention policies are **not confirmed**. They must be confirmed with SSTC administration before setting production values via `FINDIT_DESK`, `FINDIT_HOURS`, and `FINDIT_CONTACT`.
+
+- **Public retention**: Listings appear on the public board for 7 days (`PUBLIC_DAYS`).
+- **Private retention**: Full records, claims, and audit history are kept for `FINDIT_PRIVATE_DAYS` (default 30 days, minimum 7 days) before automatic cleanup.
+
+## Production
+
+Use [deploy/RELEASE.md](deploy/RELEASE.md) for the C++ to Python cutover, smoke tests, and rollback. To verify a migration from a backup of the C++ database, run:
+
 ```bash
-cd server/cpp
-node test_api.mjs
+python3 migrate_cpp.py --source /path/to/cpp-backup.db --target /path/to/reports.sqlite3 --dry-run
 ```
-Runs 25 comprehensive automated checks covering CORS, input validation, authentication, password updates, report updates, static serving, and 7-day data retention.
 
----
+Omit `--dry-run` to write the migrated database to the target. The production service allows both `https://sstcfindit.me` and `https://www.sstcfindit.me`.
 
-## Project Structure
-
-```
-├── algorithms.js              # Explainable matching heuristic & text similarity
-├── algorithms.test.mjs        # Frontend unit tests
-├── app.js                     # SPA controllers, API client, coordinator workflow
-├── index.html                 # Semantic single-page application interface
-├── styles.css                 # Clean, responsive styling
-├── FindIt_Project_Synopsis.docx # Updated official project synopsis document
-├── SYNOPSIS.md                # Complete project synopsis in Markdown
-├── server/
-│   ├── cpp/
-│   │   ├── main.cpp           # C++17 Winsock REST API & SQLite server
-│   │   ├── build.sh           # Unix/Bash build script
-│   │   └── test_api.mjs       # Backend integration test suite (25 checks)
-│   ├── index.js               # Reference Node.js prototype server
-│   └── package.json           # Node dependencies for prototype and test runner
-```
+The C++ and Node servers and their deployment files remain available for reference and rollback. The legacy C++ installer and CloudFormation template target the pre-migration release. Use the Python runbook above for this checkout.

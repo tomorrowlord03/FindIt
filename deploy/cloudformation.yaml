@@ -60,6 +60,8 @@ Resources:
 
           # Clone repo as ubuntu user
           su - ubuntu -c "git clone https://github.com/tomorrowlord03/FindIt.git /home/ubuntu/FindIt"
+          # This template installs the legacy C++ server and its matching frontend.
+          su - ubuntu -c "git -C /home/ubuntu/FindIt checkout --detach a1b8ba70c3fbf226a57db865f0ee5d31c93f6e16"
           su - ubuntu -c "cd /home/ubuntu/FindIt/server/cpp && g++ -std=c++17 -O2 -o findit-server main.cpp -lsqlite3 -lpthread -ldl"
 
           # Setup systemd with auto-generated admin password

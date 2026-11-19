@@ -2,6 +2,11 @@
 # Automated cloud setup script for FindIt on Ubuntu (AWS EC2 / Lightsail)
 set -euo pipefail
 
+if [[ -f "$(dirname "$0")/../server.py" ]]; then
+  echo "This installer is for the legacy C++ version. See deploy/RELEASE.md for this checkout." >&2
+  exit 1
+fi
+
 echo "==> Updating apt repositories and installing packages..."
 export DEBIAN_FRONTEND=noninteractive
 sudo apt update -y
