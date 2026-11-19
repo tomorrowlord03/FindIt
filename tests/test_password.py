@@ -6,12 +6,15 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from contextlib import closing, contextmanager
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import URLError
 
+from server import App
 from test_journey import Client, ROOT
 
 
@@ -96,6 +99,47 @@ class CoordinatorPassword(unittest.TestCase):
             self.assertEqual(login(staff, REPLACEMENT)[0], 200)
         with running_server(self.db, FINDIT_PASSWORD="") as origin:
             self.assertEqual(login(Client(origin), REPLACEMENT)[0], 200)
+
+    def test_auth_requests_return_busy_when_lock_is_held(self):
+        with (
+            patch.dict(os.environ, FINDIT_ORIGIN=""),
+            App(("127.0.0.1", 0), self.db, BOOTSTRAP, "admin", 30) as app,
+        ):
+            worker = threading.Thread(target=app.serve_forever)
+            worker.start()
+            try:
+                client = Client(f"http://127.0.0.1:{app.server_port}")
+                self.assertEqual(login(client)[0], 200)
+                busy = (503, {"error": "FindIt is busy. Try again shortly."})
+                with app.auth_lock:
+                    self.assertEqual(login(client), busy)
+                    self.assertEqual(change(client), busy)
+                self.assertEqual(change(client), (200, {"changed": True}))
+                self.assertEqual(login(client, REPLACEMENT)[0], 200)
+            finally:
+                app.shutdown()
+                worker.join()
+
+    def test_successful_login_resets_login_failures(self):
+        with running_server(self.db) as origin:
+            client = Client(origin)
+            for _ in range(4):
+                self.assertEqual(login(client, "wrong password")[0], 401)
+            self.assertEqual(login(client)[0], 200)
+            for _ in range(5):
+                self.assertEqual(login(client, "wrong password")[0], 401)
+            self.assertEqual(login(client)[0], 429)
+
+    def test_successful_password_change_resets_password_failures(self):
+        with running_server(self.db) as origin:
+            staff = Client(origin)
+            self.assertEqual(login(staff)[0], 200)
+            for _ in range(4):
+                self.assertEqual(change(staff, current="wrong password")[0], 403)
+            self.assertEqual(change(staff), (200, {"changed": True}))
+            for _ in range(5):
+                self.assertEqual(change(staff, current="wrong password")[0], 403)
+            self.assertEqual(change(staff, current=REPLACEMENT, new=BOOTSTRAP)[0], 429)
 
     def test_untrusted_proxy_cannot_bypass_login_limit(self):
         with running_server(self.db) as origin:

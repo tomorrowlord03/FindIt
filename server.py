@@ -409,7 +409,9 @@ class Handler(BaseHTTPRequestHandler):
         app = self.server
         username = string(data, "username", 100)
         password = password_bytes(data.get("password"), 0, "Check password.")
-        with app.auth_lock:
+        if not app.auth_lock.acquire(timeout=1):
+            raise Failure(503, "FindIt is busy. Try again shortly.")
+        try:
             key, attempts = app.auth_attempts("login", self.client_ip())
             if not app.password_matches(password) or username != app.username:
                 app.failures[key] = attempts
@@ -419,11 +421,16 @@ class Handler(BaseHTTPRequestHandler):
             with app.lock:
                 app.sessions.pop(self.token(), None)
                 app.sessions[token] = expires
+            app.failures.pop(key, None)
+        finally:
+            app.auth_lock.release()
         self.reply({"authenticated": True, "expiresAt": expires}, cookie=self.cookie(token, 1800))
 
     def change_password(self, data):
         app = self.server
-        with app.auth_lock:
+        if not app.auth_lock.acquire(timeout=1):
+            raise Failure(503, "FindIt is busy. Try again shortly.")
+        try:
             self.require_admin()
             key, attempts = app.auth_attempts("password", self.client_ip())
             current = password_bytes(data.get("currentPassword"), 0, "Check the current password.")
@@ -432,6 +439,9 @@ class Handler(BaseHTTPRequestHandler):
                 app.failures[key] = attempts
                 raise Failure(403, "The current password is incorrect.")
             app.update_password(new, self.token())
+            app.failures.pop(key, None)
+        finally:
+            app.auth_lock.release()
         return self.reply({"changed": True})
 
     def dispatch(self, method):
