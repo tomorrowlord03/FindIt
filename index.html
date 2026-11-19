@@ -85,6 +85,14 @@
         <label>Username<input name="username" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label>
       </div></fieldset><p class="form-error" role="alert"></p><button class="primary" type="submit">Sign in</button></form>
       <div id="adminTools" class="actions" hidden><button type="button" class="secondary" id="refreshAdmin">Refresh queue</button><button type="button" class="secondary" id="lockView">Lock view</button></div>
+      <form id="changePassword" class="form-card password-form" hidden>
+        <fieldset class="form-section"><legend>Change password</legend><div class="form-grid">
+          <label>Current password<input name="currentPassword" type="password" required maxlength="1024" autocomplete="current-password"></label>
+          <label>New password<input name="newPassword" type="password" required maxlength="1024" autocomplete="new-password" aria-describedby="newPasswordHint"></label>
+        </div><p class="field-hint" id="newPasswordHint">Use at least 12 characters. Other coordinator sessions will be signed out.</p></fieldset>
+        <p class="form-error" role="alert"></p><p class="notice" role="status"></p>
+        <button class="primary" type="submit">Change password</button>
+      </form>
       <div id="adminList"></div>
     </section>
   </main>

@@ -230,6 +230,11 @@ function clearAdmin() {
   byId('adminList').replaceChildren();
   byId('adminTools').hidden = true; byId('coordinatorLogin').hidden = true;
   byId('coordinatorLogin').reset(); byId('coordinatorLogin').querySelector('.form-error').textContent = '';
+  const passwordForm = byId('changePassword');
+  passwordForm.hidden = true;
+  passwordForm.reset();
+  passwordForm.querySelector('.form-error').textContent = '';
+  passwordForm.querySelector('.notice').textContent = '';
   byId('adminStatus').textContent = '';
 }
 
@@ -293,6 +298,7 @@ async function checkAdmin() {
     if (!(until > 0)) throw Object.assign(new Error('Session expired. Sign in again.'),{status:401});
     coordinatorQueue(data);
     byId('adminTools').hidden = false;
+    byId('changePassword').hidden = false;
     byId('adminStatus').textContent = '';
     expiryTimer = setTimeout(() => { clearAdmin(); byId('coordinatorLogin').hidden = false;
       byId('adminStatus').textContent = 'Your session expired. Sign in again.'; },until);
@@ -327,6 +333,27 @@ async function login(event) {
   finally { setBusy(form,false); }
 }
 
+async function changePassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  if (form.dataset.busy === 'true') return;
+  const data = Object.fromEntries(new FormData(form));
+  const epoch = adminEpoch;
+  const feedback = form.querySelector('.notice');
+  const inlineError = form.querySelector('.form-error');
+  form.reset();
+  feedback.textContent = inlineError.textContent = '';
+  setBusy(form,true);
+  try {
+    await api('admin/change-password',data);
+    if (epoch === adminEpoch) feedback.textContent = 'Password changed. Other coordinator sessions were signed out.';
+  } catch(error) {
+    if (epoch !== adminEpoch) return;
+    if (error.status === 401) await checkAdmin();
+    else inlineError.textContent = error.message;
+  } finally { setBusy(form,false); }
+}
+
 async function resolve(event) {
   const form = event.target.closest('.handover-form');
   if (!form) return;
@@ -355,6 +382,7 @@ byId('reportForm').elements.date.value = localDate();
 byId('reportForm').addEventListener('submit',submitPublic);
 byId('claimForm').addEventListener('submit',submitPublic);
 byId('coordinatorLogin').addEventListener('submit',login);
+byId('changePassword').addEventListener('submit',changePassword);
 byId('refreshAdmin').addEventListener('click',checkAdmin);
 byId('lockView').addEventListener('click',logout);
 byId('adminList').addEventListener('submit',resolve);

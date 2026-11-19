@@ -129,6 +129,8 @@ h3 { font-size: 1.14rem; margin-bottom: .5rem; }
 .report-card .card-action, .report-card .secondary { margin-top: .8rem; }
 .form-card, .receipt-card { max-width: 54rem; }
 .admin-login { max-width: 32rem; }
+.password-form { margin-block: 1rem; }
+.password-form fieldset { margin-bottom: .75rem; }
 .form-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 .full { grid-column: 1 / -1; }
 label { display: block; min-width: 0; font-size: .92rem; font-weight: 650; }

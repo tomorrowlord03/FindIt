@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import mimetypes
 import os
@@ -21,8 +22,18 @@ from urllib.parse import urlsplit
 BASE = Path(__file__).resolve().parent
 DAY = 86_400
 PUBLIC_DAYS = 7
+AUTH_MAX_FAILURES = 5
+AUTH_WINDOW = 15 * 60
+PASSWORD_ITERATIONS = 600_000
+PASSWORD_SETTING = "coordinator_password"
 PUBLIC = "id,type,title,category,color,location,date,time,description,status"
 PRIVATE = PUBLIC + ",contact,contactDetail,privateClue"
+REPORT_FIELDS = [
+    ("type", 8, True), ("title", 100, True), ("category", 80, True), ("color", 60, False),
+    ("location", 160, True), ("date", 10, True), ("time", 5, False),
+    ("description", 1000, True), ("contact", 100, True), ("contactDetail", 160, True),
+    ("privateClue", 500, False),
+]
 ASSETS = {"index.html", "styles.css", "algorithms.js", "app.js"}
 PAGES = {"/", "/dashboard", "/report", "/reports", "/browse", "/matches", "/coordinator", "/admin", "/help"}
 SCHEMA = """
@@ -44,6 +55,7 @@ CREATE TABLE IF NOT EXISTS history (
  seq INTEGER PRIMARY KEY, reference TEXT NOT NULL, action TEXT NOT NULL, actor TEXT NOT NULL,
  note TEXT NOT NULL, created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS reports_created ON reports(created);
 CREATE INDEX IF NOT EXISTS claims_report ON claims(reportId);
 """
@@ -64,6 +76,19 @@ def string(data, key, limit, required=True):
 
 def ticket(prefix):
     return prefix + "-" + secrets.token_hex(6).upper()
+
+
+def password_bytes(value, minimum, message):
+    if isinstance(value, str) and minimum <= len(value) <= 1024:
+        try:
+            return value.encode()
+        except UnicodeEncodeError:
+            pass
+    raise Failure(400, message)
+
+
+def derive(password, salt):
+    return hashlib.pbkdf2_hmac("sha256", password, salt, PASSWORD_ITERATIONS)
 
 
 def fingerprint(values):
@@ -87,13 +112,7 @@ def active_report(db, identifier):
 
 def create_report(db, data, now):
     key = string(data, "requestId", 128)
-    fields = [
-        ("type", 8, True), ("title", 100, True), ("category", 80, True), ("color", 60, False),
-        ("location", 160, True), ("date", 10, True), ("time", 5, False),
-        ("description", 1000, True), ("contact", 100, True), ("contactDetail", 160, True),
-        ("privateClue", 500, False),
-    ]
-    values = {k: string(data, k, limit, req) for k, limit, req in fields}
+    values = {k: string(data, k, limit, req) for k, limit, req in REPORT_FIELDS}
     if values["type"] not in ("lost", "found"):
         raise Failure(400, "Choose lost or found.")
     try:
@@ -177,19 +196,59 @@ class App(ThreadingHTTPServer):
         self.dbpath = database
         self.private_days = private_days
         self.username = username
-        self.salt = secrets.token_bytes(16)
-        self.password_hash = self.derive(password)
+        self.trust_proxy = os.getenv("FINDIT_TRUST_PROXY") == "1"
         self.lock = threading.Lock()
+        self.auth_lock = threading.Lock()
         self.sessions = {}
         self.failures = {}
         self.next_cleanup = 0
+        self.next_auth_cleanup = 0
         with closing(self.connect()) as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(SCHEMA)
+            stored = db.execute("SELECT val FROM settings WHERE key=?", (PASSWORD_SETTING,)).fetchone()
+        if stored:
+            try:
+                self.salt, self.password_hash = (bytes.fromhex(part) for part in stored[0].split(":"))
+                if len(self.salt) != 16 or len(self.password_hash) != 32:
+                    raise ValueError()
+            except (AttributeError, ValueError):
+                raise SystemExit("The stored coordinator password hash is invalid.") from None
+        else:
+            try:
+                password = password_bytes(password, 12, "Set FINDIT_PASSWORD to a unique password of 12 to 1024 characters.")
+            except Failure as error:
+                raise SystemExit(str(error)) from None
+            self.salt = secrets.token_bytes(16)
+            self.password_hash = derive(password, self.salt)
         super().__init__(address, Handler)
 
-    def derive(self, value):
-        return hashlib.pbkdf2_hmac("sha256", value.encode(), self.salt, 600000)
+    def password_matches(self, password):
+        return hmac.compare_digest(derive(password, self.salt), self.password_hash)
+
+    def auth_attempts(self, action, ip):
+        now = time.monotonic()
+        cutoff = now - AUTH_WINDOW
+        if now >= self.next_auth_cleanup:
+            self.failures = {key: times for key, times in self.failures.items() if times[-1] > cutoff}
+            self.next_auth_cleanup = now + 60
+        key = (action, ip)
+        recent = [attempt for attempt in self.failures.get(key, ()) if attempt > cutoff]
+        if len(recent) >= AUTH_MAX_FAILURES:
+            raise Failure(429, "Too many attempts. Try again in 15 minutes.")
+        return key, [*recent, now]
+
+    def update_password(self, password, token):
+        salt = secrets.token_bytes(16)
+        digest = derive(password, salt)
+        with self.lock:
+            if self.sessions.get(token, 0) <= time.time():
+                raise Failure(401, "Sign in to the coordinator desk.")
+            with closing(self.connect()) as db, db:
+                db.execute("INSERT OR REPLACE INTO settings (key, val) VALUES (?, ?)",
+                           (PASSWORD_SETTING, f"{salt.hex()}:{digest.hex()}"))
+            self.salt, self.password_hash = salt, digest
+            self.sessions = {token: self.sessions[token]}
 
     def connect(self):
         db = sqlite3.connect(self.dbpath, timeout=10)
@@ -207,7 +266,6 @@ class App(ThreadingHTTPServer):
                 db.execute("DELETE FROM history WHERE created<?", (cutoff,))
             self.next_cleanup = now + 60
             self.sessions = {k: t for k, t in self.sessions.items() if t > now}
-            self.failures = {k: v for k, v in self.failures.items() if v[1] > now}
 
     def service_actions(self):
         try:
@@ -259,8 +317,10 @@ class Handler(BaseHTTPRequestHandler):
         return expiry if expiry > time.time() else 0
 
     def require_admin(self):
-        if not self.expiry():
+        expires = self.expiry()
+        if not expires:
             raise Failure(401, "Sign in to the coordinator desk.")
+        return expires
 
     def read_body(self):
         origin = self.headers.get("Origin")
@@ -287,28 +347,42 @@ class Handler(BaseHTTPRequestHandler):
         secure = "; Secure" if os.getenv("FINDIT_ORIGIN", "").startswith("https://") else ""
         return f"findit_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}{secure}"
 
-    def login(self, data, now):
+    def client_ip(self):
+        if self.server.trust_proxy:
+            try:
+                return str(ipaddress.ip_address(self.headers.get("X-Real-IP", "")))
+            except ValueError:
+                pass
+        return self.client_address[0]
+
+    def login(self, data):
         app = self.server
         username = string(data, "username", 100)
-        password = data.get("password")
-        if not isinstance(password, str) or len(password) > 1024:
-            raise Failure(400, "Check password.")
-        ip = self.client_address[0]
-        with app.lock:
-            attempts, end = app.failures.get(ip, (0, now + 60))
-            if end <= now:
-                attempts, end = 0, now + 60
-            if attempts >= 8:
-                raise Failure(429, "Too many attempts. Try again in one minute.")
-            app.failures[ip] = (attempts + 1, end)
-        if not hmac.compare_digest(app.derive(password), app.password_hash) or username != app.username:
-            raise Failure(401, "The username or password is incorrect.")
-        token = secrets.token_urlsafe(32)
-        with app.lock:
-            app.sessions.pop(self.token(), None)
-            app.sessions[token] = now + 1800
-            app.failures.pop(ip, None)
-        self.reply({"authenticated": True, "expiresAt": now + 1800}, cookie=self.cookie(token, 1800))
+        password = password_bytes(data.get("password"), 0, "Check password.")
+        with app.auth_lock:
+            key, attempts = app.auth_attempts("login", self.client_ip())
+            if not app.password_matches(password) or username != app.username:
+                app.failures[key] = attempts
+                raise Failure(401, "The username or password is incorrect.")
+            token = secrets.token_urlsafe(32)
+            expires = int(time.time()) + 1800
+            with app.lock:
+                app.sessions.pop(self.token(), None)
+                app.sessions[token] = expires
+        self.reply({"authenticated": True, "expiresAt": expires}, cookie=self.cookie(token, 1800))
+
+    def change_password(self, data):
+        app = self.server
+        with app.auth_lock:
+            self.require_admin()
+            key, attempts = app.auth_attempts("password", self.client_ip())
+            current = password_bytes(data.get("currentPassword"), 0, "Check the current password.")
+            new = password_bytes(data.get("newPassword"), 12, "Use 12 to 1024 characters for the new password.")
+            if not app.password_matches(current):
+                app.failures[key] = attempts
+                raise Failure(403, "The current password is incorrect.")
+            app.update_password(new, self.token())
+        return self.reply({"changed": True})
 
     def dispatch(self, method):
         path = urlsplit(self.path).path
@@ -338,8 +412,9 @@ class Handler(BaseHTTPRequestHandler):
                         hist = dict(r)
                         hist["createdAt"] = datetime.fromtimestamp(hist.pop("created"), timezone.utc).isoformat()
                         history.append(hist)
+                    expires = self.require_admin()
                     return self.reply({"reports": reports, "claims": claims, "history": history,
-                                       "expiresAt": self.expiry()})
+                                       "expiresAt": expires})
             filename = "index.html" if path in PAGES else path.removeprefix("/")
             if filename not in ASSETS:
                 raise Failure(404, "Not found.")
@@ -347,7 +422,9 @@ class Handler(BaseHTTPRequestHandler):
 
         data = self.read_body()
         if path == "/api/login":
-            return self.login(data, now)
+            return self.login(data)
+        if path == "/api/admin/change-password":
+            return self.change_password(data)
         if path == "/api/logout":
             with app.lock:
                 app.sessions.pop(self.token(), None)
@@ -385,8 +462,6 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     password = os.getenv("FINDIT_PASSWORD", "")
-    if len(password) < 12:
-        raise SystemExit("Set FINDIT_PASSWORD to a unique password of at least 12 characters.")
     private_days = int(os.getenv("FINDIT_PRIVATE_DAYS", "30"))
     if private_days < PUBLIC_DAYS:
         raise SystemExit("FINDIT_PRIVATE_DAYS must be at least 7.")
