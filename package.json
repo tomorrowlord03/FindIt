@@ -1,5 +1,6 @@
 {
   "name": "findit",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "test": "node algorithms.test.mjs"

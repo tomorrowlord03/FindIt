@@ -1,5 +1,7 @@
 # PROJECT SYNOPSIS: FindIt - Smart Campus Lost and Found Management System
 
+This synopsis describes the original C++ implementation. See the [README](README.md) for the current application and its architecture.
+
 ## 1. Introduction
 FindIt is a full-stack campus lost-and-found management system. It replaces informal reporting methods with a centralized, searchable platform that ranks likely matches and provides a secure coordinator workflow.
 
