@@ -1,77 +1,92 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="FindIt helps campus communities report, search, and match lost and found items.">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Report a lost or found item on the SSTC campus, browse the board, and privately claim an item through a coordinator.">
   <title>FindIt | Campus lost and found</title>
   <link rel="stylesheet" href="styles.css">
+  <script defer src="algorithms.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
-    <a class="brand" href="#dashboard" aria-label="FindIt home"><span class="brand-mark">F</span><span>FindIt</span></a>
+    <a class="brand" href="#dashboard" aria-label="FindIt home"><span class="brand-mark" aria-hidden="true">F</span>FindIt</a>
     <nav class="nav-links" aria-label="Main navigation">
-      <button class="nav-link active" data-view="dashboard">Dashboard</button>
-      <button class="nav-link" data-view="reports">Browse reports</button>
-      <button class="nav-link" data-view="matches">Possible matches <span id="matchBadge" class="badge">0</span></button>
-      <button class="nav-link" data-view="admin">Coordinator</button>
+      <a class="nav-link" href="#dashboard">Dashboard</a>
+      <a class="nav-link" href="#reports">Browse reports</a>
+      <a class="nav-link" href="#matches">Possible matches</a>
+      <a class="nav-link" href="#admin">Coordinator</a>
     </nav>
-    <button id="resetData" class="text-button" type="button">Reset demo data</button>
   </header>
-
-  <main class="shell">
+  <main id="main" class="shell" tabindex="-1">
+    <noscript>Enable JavaScript to load the campus board and submit a report.</noscript>
+    <div id="boardNotice" class="status-banner" role="status" hidden></div>
     <section id="dashboard" class="view active-view">
       <div class="hero">
-        <div>
-          <p class="eyebrow">SSTC campus helper</p>
-          <h1>Lost something? Start here.</h1>
-          <p class="hero-copy">Report an item, browse campus reports, and let FindIt surface the closest matches.</p>
-          <div class="hero-actions"><button class="primary" data-view="report">Report an item</button><button class="secondary" data-view="reports">Search reports</button></div>
+        <div><p class="eyebrow">SSTC campus lost and found</p>
+          <h1 tabindex="-1">Lost something on campus?</h1>
+          <p class="hero-copy">Look through the campus board or leave a report so someone can help return your item.</p>
+          <div class="hero-actions"><a class="primary" href="#report">Report an item</a><a class="secondary" href="#reports">Browse reports</a></div>
         </div>
-        <div class="hero-note"><span class="note-icon">✦</span><strong>Simple by design</strong><p>Every match shows why it was suggested. No black box.</p></div>
+        <aside class="hero-note"><h2>Collecting an item</h2><p>Recognise a found item? Open its report and send a private ownership clue. A coordinator reviews the claim and arranges collection.</p><div class="pickup-info"></div></aside>
       </div>
-      <div class="stats" id="stats"></div>
-      <div class="section-heading"><div><p class="eyebrow">Latest activity</p><h2>Recent reports</h2></div><button class="link-button" data-view="reports">View all →</button></div>
+      <div class="section-heading"><h2>Recent reports</h2><a class="link-button" href="#reports">View all reports</a></div>
       <div id="recentReports" class="report-grid"></div>
     </section>
-
-    <section id="report" class="view">
-      <div class="page-heading"><p class="eyebrow">New report</p><h1>Tell us what happened</h1><p>Add the details you remember. More detail gives the matcher more to work with.</p></div>
+    <section id="report" class="view" hidden>
+      <div class="page-heading"><p class="eyebrow">New report</p><h1 tabindex="-1">Report an item</h1><p>Share enough for someone to recognise the item. Keep identifying marks for the private section.</p></div>
       <form id="reportForm" class="form-card">
-        <div class="segmented"><label><input type="radio" name="type" value="lost" checked><span>I lost something</span></label><label><input type="radio" name="type" value="found"><span>I found something</span></label></div>
-        <div class="form-grid">
-          <label>Item name<input name="title" required maxlength="60" placeholder="e.g. Black wireless earphones"></label>
-          <label>Category<select name="category" required><option value="">Choose a category</option><option>Identity card</option><option>Electronics</option><option>Books & stationery</option><option>Keys</option><option>Wallet / money</option><option>Clothing</option><option>Other</option></select></label>
-          <label>Colour<input name="color" required maxlength="30" placeholder="e.g. Black"></label>
-          <label>Location<input name="location" required maxlength="80" placeholder="e.g. Library, Block A"></label>
-          <label>Date<input name="date" type="date" required></label>
-          <label>Approximate time<input name="time" type="time" required></label>
-          <label>Contact name<input name="contact" required maxlength="50" placeholder="Your name"></label>
-          <label class="full">Description<textarea name="description" required maxlength="500" rows="4" placeholder="Add brand, marks, stickers, or anything distinctive..."></textarea></label>
-          <label class="full">Contact detail <span class="muted">(visible only to the coordinator)</span><input name="contactDetail" required maxlength="100" placeholder="Email or phone number"></label>
-        </div>
-        <div class="form-footer"><p class="muted">Your report stays on this browser for this demo.</p><button class="primary" type="submit">Publish report</button></div>
+        <fieldset class="form-section"><legend>What happened?</legend><div class="segmented">
+          <label><input type="radio" name="type" value="lost" checked><span>I lost something</span></label>
+          <label><input type="radio" name="type" value="found"><span>I found something</span></label>
+        </div></fieldset>
+        <fieldset class="form-section"><legend>Public item details</legend><div class="form-grid">
+          <label>Item name<input name="title" required maxlength="60" placeholder="Black earphones"></label>
+          <label>Category<select name="category" required><option value="">Choose a category</option><option>Identity card</option><option>Electronics</option><option>Books &amp; stationery</option><option>Keys</option><option>Wallet / money</option><option>Clothing</option><option>Other</option></select></label>
+          <label>Location<input name="location" required maxlength="80" placeholder="Library, Block A"></label>
+          <label>Colour (optional)<input name="color" maxlength="30"></label>
+          <label>Date lost or found<input name="date" type="date" required></label>
+          <label>Approximate time (optional)<input name="time" type="time"></label>
+          <label class="full">Public description<textarea name="description" required maxlength="500" rows="3" aria-describedby="descriptionHint"></textarea><span id="descriptionHint" class="field-hint">Leave out personal details, ID numbers and the clue you will use to verify ownership.</span></label>
+        </div></fieldset>
+        <fieldset class="form-section"><legend>Private coordinator details</legend><div class="form-grid">
+          <label>Your name<input name="contact" required maxlength="50" autocomplete="name"></label>
+          <label>Your email or phone<input name="contactDetail" required maxlength="100" autocomplete="off"></label>
+          <label class="full">Private verification clue (optional)<textarea name="privateClue" maxlength="300" rows="2" placeholder="A detail the owner would know"></textarea></label>
+        </div></fieldset>
+        <p id="retention" class="field-hint"></p><p class="form-error" role="alert"></p>
+        <button class="primary" type="submit">Publish report</button>
       </form>
     </section>
-
-    <section id="reports" class="view">
-      <div class="page-heading inline-heading"><div><p class="eyebrow">Campus board</p><h1>Browse reports</h1></div><button class="primary" data-view="report">+ New report</button></div>
-      <div class="filters"><input id="searchInput" type="search" placeholder="Search name, description, colour, location..." aria-label="Search reports"><select id="typeFilter"><option value="all">All report types</option><option value="lost">Lost only</option><option value="found">Found only</option></select><select id="categoryFilter"><option value="all">All categories</option></select><select id="statusFilter"><option value="all">All statuses</option><option>Open</option><option>Possible Match</option><option>Claimed</option><option>Returned</option></select></div>
-      <div id="reportList" class="report-list"></div>
+    <section id="reports" class="view" hidden>
+      <div class="page-heading inline-heading"><h1 tabindex="-1">Browse reports</h1><a class="primary" href="#report">New report</a></div>
+      <div class="filters"><label>Search<input id="searchInput" type="search" placeholder="Item or location"></label>
+        <label>Report type<select id="typeFilter"><option value="">All types</option><option value="lost">Lost</option><option value="found">Found</option></select></label>
+        <label>Category<select id="categoryFilter"><option value="">All categories</option></select></label>
+        <label>Status<select id="statusFilter"><option value="">All statuses</option><option>Open</option><option>Returned</option></select></label>
+      </div><p id="resultsCount" role="status"></p><div id="reportList" class="report-list"></div>
+      <button class="secondary" id="showMore" hidden>Show more reports</button>
     </section>
-
-    <section id="matches" class="view">
-      <div class="page-heading"><p class="eyebrow">Matching desk</p><h1>Possible matches</h1><p>FindIt compares category, location, colour, date, and description similarity. Higher scores are stronger suggestions.</p></div>
-      <div id="matchList" class="match-list"></div>
+    <section id="matches" class="view" hidden><div class="page-heading"><h1 tabindex="-1">Possible matches</h1><p>Shared details suggest which lost and found reports to compare. A coordinator checks ownership before pickup.</p></div><div class="match-list" id="matchList"></div></section>
+    <section id="claim" class="view" hidden><div class="page-heading"><p class="eyebrow">Private claim</p><h1 tabindex="-1">This may be mine</h1><p id="claimItem"></p></div>
+      <form id="claimForm" class="form-card"><fieldset class="form-section"><legend>For the coordinator</legend><div class="form-grid">
+        <label>Your name<input name="contact" required maxlength="50" autocomplete="name"></label>
+        <label>Your email or phone<input name="contactDetail" required maxlength="100" autocomplete="off"></label>
+        <label class="full">What detail identifies this item as yours?<textarea name="proof" required minlength="5" maxlength="500" rows="3"></textarea><span class="field-hint">Describe a detail missing from the public listing. Keep passwords and full ID numbers private.</span></label>
+      </div></fieldset><p class="form-error" role="alert"></p><button class="primary" type="submit">Send private claim</button></form>
+      <a href="#reports" class="link-button">Back to reports</a>
     </section>
-
-    <section id="admin" class="view">
-      <div class="page-heading"><p class="eyebrow">Coordinator view</p><h1>Review and resolve</h1><p>Use this view to move reports through the simple claim and return workflow.</p></div>
-      <div class="admin-card"><div class="admin-head"><strong>Report queue</strong><span id="adminCount" class="muted"></span></div><div id="adminList"></div></div>
+    <section id="receipt" class="view" hidden><div class="receipt receipt-card form-card"><p class="eyebrow">Confirmation</p><h1 tabindex="-1">Your reference</h1><p id="receiptText"></p><strong id="reference"></strong><p id="receiptNext"></p><div class="pickup-info"></div><a href="#reports" class="primary">Browse reports</a></div></section>
+    <section id="admin" class="view" hidden><div class="page-heading"><p class="eyebrow">Coordinator</p><h1 tabindex="-1">Claim review</h1><p>Review private evidence and record each handover.</p></div>
+      <p id="adminStatus" class="notice" role="status"></p>
+      <form id="coordinatorLogin" class="form-card admin-login" hidden><fieldset class="form-section"><legend>Coordinator sign in</legend><div class="form-grid">
+        <label>Username<input name="username" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+      </div></fieldset><p class="form-error" role="alert"></p><button class="primary" type="submit">Sign in</button></form>
+      <div id="adminTools" class="actions" hidden><button type="button" class="secondary" id="refreshAdmin">Refresh queue</button><button type="button" class="secondary" id="lockView">Lock view</button></div>
+      <div id="adminList"></div>
     </section>
   </main>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="algorithms.js"></script>
-  <script src="app.js"></script>
 </body>
 </html>
