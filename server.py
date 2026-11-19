@@ -7,6 +7,7 @@ import ipaddress
 import json
 import mimetypes
 import os
+import re
 import secrets
 import sqlite3
 import threading
@@ -51,13 +52,24 @@ CREATE TABLE IF NOT EXISTS claims (
  contactDetail TEXT NOT NULL, proof TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'Pending',
  created INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS report_receipts (
+ requestId TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+ id TEXT NOT NULL REFERENCES reports(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS claim_receipts (
+ requestId TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+ reference TEXT NOT NULL REFERENCES claims(reference) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS history (
  seq INTEGER PRIMARY KEY, reference TEXT NOT NULL, action TEXT NOT NULL, actor TEXT NOT NULL,
  note TEXT NOT NULL, created INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, val TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS reports_created ON reports(created);
+CREATE INDEX IF NOT EXISTS reports_fingerprint ON reports(fingerprint);
 CREATE INDEX IF NOT EXISTS claims_report ON claims(reportId);
+CREATE INDEX IF NOT EXISTS report_receipts_id ON report_receipts(id);
+CREATE INDEX IF NOT EXISTS claim_receipts_reference ON claim_receipts(reference);
 """
 
 
@@ -96,8 +108,10 @@ def fingerprint(values):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def receipt(db, table, column, key, signature):
-    row = db.execute(f"SELECT {column},fingerprint FROM {table} WHERE requestId=?", (key,)).fetchone()
+def receipt(db, table, receipts, column, key, signature):
+    row = db.execute(f"""SELECT {column},fingerprint FROM {table} WHERE requestId=?
+                     UNION ALL SELECT {column},fingerprint FROM {receipts} WHERE requestId=?""",
+                     (key, key)).fetchone()
     if row and row["fingerprint"] != signature:
         raise Failure(409, "This submission reference was already used for different details.")
     return row[0] if row else None
@@ -123,13 +137,22 @@ def create_report(db, data, now):
     except ValueError:
         raise Failure(400, "Enter a valid date and time.")
     signature = fingerprint(values)
-    identifier = receipt(db, "reports", "id", key, signature)
-    if not identifier:
-        identifier = ticket("FI")
-        columns = ",".join(values)
-        params = [identifier, key, signature, now, *values.values()]
-        marks = ",".join("?" for _ in params)
-        db.execute(f"INSERT INTO reports(id,requestId,fingerprint,created,{columns}) VALUES ({marks})", params)
+    identifier = receipt(db, "reports", "report_receipts", "id", key, signature)
+    if identifier:
+        return {"id": identifier, "reference": identifier}
+    duplicate = db.execute("""SELECT id FROM reports WHERE fingerprint=?
+                              AND status IN ('Open','Possible Match') ORDER BY rowid LIMIT 1""",
+                           (signature,)).fetchone()
+    if duplicate:
+        identifier = duplicate["id"]
+        db.execute("INSERT INTO report_receipts(requestId,fingerprint,id) VALUES (?,?,?)",
+                   (key, signature, identifier))
+        return {"id": identifier, "reference": identifier}
+    identifier = ticket("FI")
+    columns = ",".join(values)
+    params = [identifier, key, signature, now, *values.values()]
+    marks = ",".join("?" for _ in params)
+    db.execute(f"INSERT INTO reports(id,requestId,fingerprint,created,{columns}) VALUES ({marks})", params)
     return {"id": identifier, "reference": identifier}
 
 
@@ -141,9 +164,18 @@ def create_claim(db, data, now):
     detail = string(data, "contactDetail", 160)
     proof = string(data, "proof", 1000)
     signature = fingerprint([report, linked, contact, detail, proof])
-    ref = receipt(db, "claims", "reference", key, signature)
+    ref = receipt(db, "claims", "claim_receipts", "reference", key, signature)
     if ref:
         return {"reference": ref}
+    claimant = detail.casefold()
+    pending = db.execute("""SELECT reference,contactDetail FROM claims
+                            WHERE reportId=? AND status='Pending' ORDER BY rowid""", (report,))
+    for existing in pending:
+        if existing["contactDetail"].strip().casefold() == claimant:
+            ref = existing["reference"]
+            db.execute("INSERT INTO claim_receipts(requestId,fingerprint,reference) VALUES (?,?,?)",
+                       (key, signature, ref))
+            return {"reference": ref}
     row = active_report(db, report)
     if row["created"] < now - PUBLIC_DAYS * DAY:
         raise Failure(409, "This listing has expired.")
@@ -189,6 +221,22 @@ def resolve_claim(db, data, now, actor):
     return {"reference": ref, "status": decision}
 
 
+def configured_origins(value):
+    if not value:
+        return ()
+    origins = tuple(part.strip() for part in value.split(","))
+    label = r"[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?"
+    host = rf"(?:{label}(?:\.{label})*\.?|\[[a-fA-F0-9:.]+\])"
+    for origin in origins:
+        try:
+            if not re.fullmatch(rf"https?://{host}(?::[0-9]+)?", origin):
+                raise ValueError()
+            urlsplit(origin).port  # Reading the port validates its range.
+        except ValueError:
+            raise SystemExit("FINDIT_ORIGIN must list comma-separated HTTP(S) origins with no paths.") from None
+    return origins
+
+
 class App(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -196,6 +244,8 @@ class App(ThreadingHTTPServer):
         self.dbpath = database
         self.private_days = private_days
         self.username = username
+        self.origins = configured_origins(os.getenv("FINDIT_ORIGIN"))
+        self.secure_cookie = bool(self.origins) and all(origin.startswith("https://") for origin in self.origins)
         self.trust_proxy = os.getenv("FINDIT_TRUST_PROXY") == "1"
         self.lock = threading.Lock()
         self.auth_lock = threading.Lock()
@@ -324,8 +374,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def read_body(self):
         origin = self.headers.get("Origin")
-        expected = os.environ.get("FINDIT_ORIGIN") or "http://" + self.headers.get("Host", "")
-        if (origin and origin != expected) or self.headers.get("Sec-Fetch-Site") == "cross-site":
+        expected = self.server.origins or ("http://" + self.headers.get("Host", ""),)
+        if (origin and origin not in expected) or self.headers.get("Sec-Fetch-Site") == "cross-site":
             raise Failure(403, "Cross-site submission denied.")
         if self.headers.get_content_type() != "application/json":
             raise Failure(415, "Send application/json.")
@@ -344,7 +394,7 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def cookie(self, token, age):
-        secure = "; Secure" if os.getenv("FINDIT_ORIGIN", "").startswith("https://") else ""
+        secure = "; Secure" if self.server.secure_cookie else ""
         return f"findit_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}{secure}"
 
     def client_ip(self):

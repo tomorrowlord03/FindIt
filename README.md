@@ -49,7 +49,8 @@ For persistent local operation, run `server.py` directly. Configuration is handl
 | `FINDIT_PORT` | `5500` | Port to listen on. |
 | `FINDIT_USERNAME` | `coordinator` | Username for coordinator sign-in. |
 | `FINDIT_PRIVATE_DAYS` | `30` (min 7) | Days to retain private report records and history before purging. |
-| `FINDIT_ORIGIN` | Unset (inferred from `Host`) | Expected HTTP Origin for CSRF enforcement. |
+| `FINDIT_ORIGIN` | Unset (HTTP origin inferred from `Host`) | Comma-separated origins matched exactly for CSRF enforcement. Use HTTP(S) scheme and host, with an optional port and no path or trailing slash. The session cookie uses `Secure` when every configured origin is HTTPS. |
+| `FINDIT_TRUST_PROXY` | Unset (disabled) | Set to `1` behind a trusted reverse proxy that overwrites `X-Real-IP` with the client address. The server uses this address for coordinator sign-in and password-change rate limits. |
 | `FINDIT_DESK` | `""` (empty string) | Pickup desk location displayed across the UI. |
 | `FINDIT_HOURS` | `""` (empty string) | Pickup hours displayed across the UI. |
 | `FINDIT_CONTACT` | `""` (empty string) | Coordinator contact details displayed across the UI. |
@@ -72,7 +73,7 @@ export FINDIT_PASSWORD="<choose your own>"; python3 server.py
 
 1. Open the application and navigate to `#admin` (or click **Coordinator** in the top navigation).
 2. Sign in using the coordinator username (`coordinator` by default) and the password set in `FINDIT_PASSWORD`.
-3. A "Change password" form in the coordinator view is being added. When changed, the password is stored as a salted PBKDF2 hash in the database, and the stored password takes precedence over `FINDIT_PASSWORD` on subsequent server starts.
+3. In the **Change password** form, enter your current password and a new password of at least 12 characters. Saving keeps the current session signed in and signs out other coordinator sessions. The new password is stored as a salted PBKDF2 hash in the database and takes precedence over `FINDIT_PASSWORD` on subsequent server starts.
 4. Click **Lock view** to end the session immediately and protect private records.
 
 ## Tests
@@ -87,7 +88,7 @@ Run the test suites from the repository folder:
   ```bash
   python -m unittest discover -s tests -v
   ```
-  *(macOS/Linux: `python3 -m unittest discover -s tests -v`). More test suites are being added.*
+  *(macOS/Linux: `python3 -m unittest discover -s tests -v`).*
 
 ## Pitch walkthrough (5 minutes)
 
@@ -109,7 +110,7 @@ Follow these steps with two browser windows using fictional demo data:
    - In window 1, go to **Coordinator** (`#admin`) and sign in.
    - In the review queue, locate the pending claim (`CL-...`). Inspect Student B's evidence against Student A's private clue.
    - Under **Review claim**, choose **Confirm item returned**, optionally link a corresponding lost report, provide a verification note, and click **Save decision**.
-   - Both reports close and update their status to **Returned**.
+   - The found report closes as **Returned**. Any linked lost report closes as **Returned** too.
 5. **Verify privacy and lock view**:
    - Click **Lock view** to log out of the coordinator desk.
    - Check the public **Browse reports** and **Dashboard** views: the item shows as "Returned", but contact details and private clues are never shown on the public board.
@@ -128,4 +129,10 @@ SSTC's real desk location, hours, and retention policies are **not confirmed**. 
 
 ## Production
 
-sstcfindit.me currently runs the older C++ backend; moving to this server is planned through `migrate_cpp.py` and `deploy/RELEASE.md` (being added) and has not happened yet.
+Use [deploy/RELEASE.md](deploy/RELEASE.md) for the C++ to Python cutover, smoke tests, and rollback. To verify a migration from a backup of the C++ database, run:
+
+```bash
+python3 migrate_cpp.py --source /path/to/cpp-backup.db --target /path/to/reports.sqlite3 --dry-run
+```
+
+Omit `--dry-run` to write the migrated database to the target. The production service allows both `https://sstcfindit.me` and `https://www.sstcfindit.me`.

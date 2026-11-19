@@ -7,10 +7,14 @@ const escapeHtml = value => text(value).replace(/[&<>"']/g, char => ({
 })[char]);
 const pathPart = value => escapeHtml(encodeURIComponent(value));
 const empty = message => '<p class="empty">' + escapeHtml(message) + '</p>';
+const boardViews = ['dashboard', 'reports', 'matches'];
+const boardMaxAge = 15_000;
 let reports = [], suggestions = [], loaded = false, loading = false, loadError = '';
+let lastBoardLoad = 0, boardRefreshPending = false;
 let active = '', claimTarget = '', linkedTarget = '', limit = 30;
 let lastReceipt = null, adminEpoch = 0, expiryTimer = 0, lockFailed = false;
 const pendingKeys = new Map();
+const editedForms = new WeakSet();
 
 async function api(path, body) {
   const options = {cache: 'no-store', credentials: 'same-origin', headers: {Accept: 'application/json'}};
@@ -47,7 +51,7 @@ function dateLabel(value) {
 
 function setNotice() {
   const notice = byId('boardNotice');
-  notice.hidden = !['dashboard','reports','matches','claim'].includes(active) || (!loading && !loadError);
+  notice.hidden = !(boardViews.includes(active) || active === 'claim') || (!loading && !loadError);
   notice.innerHTML = loadError
     ? escapeHtml(loadError) + (loaded ? ' Showing the last loaded board.' : '') + ' <button class="secondary" data-retry-board>Retry loading</button>'
     : (loading ? 'Loading campus reports…' : '');
@@ -107,7 +111,7 @@ function drawBoard() {
       '</div>' + claimLink(found,lost) + '</div><div class="score">' + escapeHtml(score) + '<small>match points</small></div></article>'
     ).join('') || empty('No strong suggestions yet. Browse the board or add your own report.');
   }
-  if (active === 'claim') {
+  if (active === 'claim' && !editedForms.has(byId('claimForm'))) {
     const item = reports.find(r=>r.id === claimTarget);
     byId('claimForm').hidden = !item || !openFound(item);
     byId('claimItem').textContent = !loaded ? 'Looking up the report…' : (!item || !openFound(item))
@@ -115,16 +119,27 @@ function drawBoard() {
   }
 }
 
-async function loadBoard() {
-  if (loading) return;
+function refreshBoard() {
+  if (boardRefreshPending || (boardViews.includes(active) && (!loaded || Date.now() - lastBoardLoad >= boardMaxAge))
+      || (active === 'claim' && !loaded)) loadBoard();
+}
+
+async function loadBoard(force = false) {
+  if (force) boardRefreshPending = true;
+  if (loading || [...byId(active).querySelectorAll('form')].some(form => editedForms.has(form) && !form.hidden)) return;
+  boardRefreshPending = false;
   loading = true; loadError = ''; setNotice();
   try {
     const data = await api('reports');
     if (!Array.isArray(data.reports)) throw new Error('The board response was incomplete.');
     const matches = window.FindItAlgorithms.findMatches(data.reports, {limit:25});
-    reports = data.reports; suggestions = matches; loaded = true; refreshFilters();
+    reports = data.reports; suggestions = matches; loaded = true;
+    lastBoardLoad = Date.now(); refreshFilters();
   } catch(error) { loadError = error.message; }
-  finally { loading = false; drawBoard(); }
+  finally {
+    loading = false; drawBoard();
+    if (boardRefreshPending) loadBoard();
+  }
 }
 
 async function loadConfig() {
@@ -182,6 +197,7 @@ function route() {
   drawBoard();
   if (active === 'receipt') displayReceipt();
   if (active === 'admin') checkAdmin();
+  refreshBoard();
 }
 
 function setBusy(form, busy) {
@@ -220,7 +236,7 @@ async function submitPublic(event) {
     pendingKeys.delete(form.id); form.reset();
     if (kind === 'report') form.elements.date.value = localDate();
     if (location.hash === oldRoute) location.hash = 'receipt';
-    loadBoard();
+    loadBoard(true);
   } catch(error) {
     feedback.textContent = error.message + ' Your entries are still here.';
   } finally { setBusy(form,false); }
@@ -325,11 +341,18 @@ async function login(event) {
   if (form.dataset.busy === 'true') return;
   const data = Object.fromEntries(new FormData(form));
   const epoch = adminEpoch;
-  setBusy(form,true); form.querySelector('.form-error').textContent = '';
+  const feedback = form.querySelector('.form-error');
+  setBusy(form,true); feedback.textContent = '';
   try {
     await api('login',data); form.reset();
     if (epoch === adminEpoch && active === 'admin') await checkAdmin();
-  } catch(error) { if (epoch === adminEpoch) form.querySelector('.form-error').textContent = error.message; }
+  } catch(error) {
+    if (epoch !== adminEpoch) return;
+    if (error.status === 401) form.elements.password.value = '';
+    feedback.textContent = error.message;
+    feedback.tabIndex = -1;
+    feedback.focus();
+  }
   finally { setBusy(form,false); }
 }
 
@@ -371,7 +394,7 @@ async function resolve(event) {
         byId('refreshAdmin').focus();
       }
     }
-    loadBoard();
+    loadBoard(true);
   } catch(error) {
     if (error.status === 401 && epoch === adminEpoch) await checkAdmin();
     else form.querySelector('.form-error').textContent = error.message;
@@ -386,17 +409,19 @@ byId('changePassword').addEventListener('submit',changePassword);
 byId('refreshAdmin').addEventListener('click',checkAdmin);
 byId('lockView').addEventListener('click',logout);
 byId('adminList').addEventListener('submit',resolve);
-byId('boardNotice').addEventListener('click',e=>{ if (e.target.closest('[data-retry-board]')) loadBoard(); });
+byId('boardNotice').addEventListener('click',e=>{ if (e.target.closest('[data-retry-board]')) loadBoard(true); });
 for (const id of ['searchInput','typeFilter','categoryFilter','statusFilter']) {
   byId(id).addEventListener('input',()=>{ limit=30; drawBoard(); });
 }
 byId('showMore').addEventListener('click',()=>{ limit+=30; drawBoard(); });
 document.querySelector('.skip-link').addEventListener('click',e=>{ e.preventDefault(); byId('main').focus(); });
 window.addEventListener('hashchange',route);
+document.addEventListener('input',e=>{ if (e.target.form) editedForms.add(e.target.form); });
+document.addEventListener('reset',e=>editedForms.delete(e.target));
 document.addEventListener('visibilitychange',()=>{
   if (active === 'admin') { if (document.hidden) clearAdmin(); else checkAdmin(); }
-  else if (!document.hidden) loadBoard();
+  else if (!document.hidden) refreshBoard();
 });
 window.addEventListener('pagehide',clearAdmin);
-window.addEventListener('pageshow',e=>{ if (e.persisted) {route(); loadBoard();} });
-route(); loadBoard(); loadConfig();
+window.addEventListener('pageshow',e=>{ if (e.persisted) route(); });
+route(); loadConfig();

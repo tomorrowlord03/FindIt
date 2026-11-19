@@ -17,6 +17,8 @@ import urllib.error
 import urllib.request
 import uuid
 
+from server import configured_origins
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,16 +26,18 @@ ROOT = Path(__file__).resolve().parents[1]
 class Client:
     def __init__(self, origin):
         self.origin = origin
+        self.cookies = http.cookiejar.CookieJar()
         self.http = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+            urllib.request.HTTPCookieProcessor(self.cookies),
         )
 
-    def call(self, path, data=None):
+    def call(self, path, data=None, *, request_origin=None):
         req = urllib.request.Request(
             self.origin + path,
             data=None if data is None else json.dumps(data).encode(),
-            headers={"Content-Type": "application/json", "Origin": self.origin},
+            headers={"Content-Type": "application/json",
+                     "Origin": self.origin if request_origin is None else request_origin},
         )
         try:
             response = self.http.open(req, timeout=4)
@@ -60,11 +64,13 @@ class StudentJourney(unittest.TestCase):
         self.addCleanup(self.stop_server)
         self.start_server()
 
-    def start_server(self):
+    def start_server(self, origins=""):
         env = {
             **os.environ,
             "FINDIT_DB": str(self.db),
             "FINDIT_PORT": str(self.port),
+            "FINDIT_HOST": "127.0.0.1",
+            "FINDIT_ORIGIN": origins,
             "FINDIT_USERNAME": "test-staff",
             "FINDIT_PASSWORD": self.password,
             "FINDIT_DESK": "Test desk",
@@ -180,6 +186,87 @@ class StudentJourney(unittest.TestCase):
         self.assertEqual(self.ok(self.owner, "/api/reports", report)["reference"], receipt["reference"])
         rows = self.ok(self.owner, "/api/reports")["reports"]
         self.assertEqual([r["id"] for r in rows], [receipt["id"]])
+
+    def test_report_duplicates_reuse_active_receipt(self):
+        report = self.report("found")
+        first = self.ok(self.finder, "/api/reports", report)
+        duplicate = {**report, "requestId": str(uuid.uuid4())}
+        self.assertEqual(self.ok(self.owner, "/api/reports", duplicate), first)
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE reports SET status='Possible Match' WHERE id=?", (first["id"],))
+        db.close()
+        possible_match = {**report, "requestId": str(uuid.uuid4())}
+        self.assertEqual(self.ok(self.owner, "/api/reports", possible_match), first)
+        public = self.ok(self.owner, "/api/reports")["reports"]
+        self.assertEqual([r["id"] for r in public], [first["id"]])
+
+        self.stop_server()
+        self.start_server()
+        for submission in (report, duplicate, possible_match):
+            self.assertEqual(self.ok(self.owner, "/api/reports", submission), first)
+            self.assertEqual(self.owner.call("/api/reports", {**submission, "title": "Different"})[0], 409)
+
+        with sqlite3.connect(self.db) as db:
+            db.execute("UPDATE reports SET status='Returned' WHERE id=?", (first["id"],))
+        db.close()
+        fresh = {**report, "requestId": str(uuid.uuid4())}
+        self.assertNotEqual(self.ok(self.owner, "/api/reports", fresh)["id"], first["id"])
+
+    def test_pending_claim_duplicates_match_normalized_contact(self):
+        report = self.ok(self.finder, "/api/reports", self.report("found"))
+        claim = {
+            "requestId": str(uuid.uuid4()), "reportId": report["id"],
+            "contact": "Test Claimant", "contactDetail": "Straße@example.invalid",
+            "proof": "A label inside the cover.",
+        }
+        first = self.ok(self.owner, "/api/claims", claim)
+        duplicate = {**claim, "requestId": str(uuid.uuid4()), "contactDetail": " STRASSE@EXAMPLE.INVALID ",
+                     "proof": "A more detailed clue."}
+        self.assertEqual(self.ok(self.owner, "/api/claims", duplicate), first)
+        other = {**claim, "requestId": str(uuid.uuid4()), "contactDetail": "other@example.invalid"}
+        second = self.ok(self.owner, "/api/claims", other)
+        self.assertNotEqual(second, first)
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM claims").fetchone()[0], 2)
+        db.close()
+
+        self.stop_server()
+        self.start_server()
+        for submission in (claim, duplicate):
+            self.assertEqual(self.ok(self.owner, "/api/claims", submission), first)
+            self.assertEqual(self.owner.call("/api/claims", {**submission, "proof": "Different"})[0], 409)
+        self.ok(self.staff, "/api/login", {"username": "test-staff", "password": self.password})
+        self.ok(self.staff, "/api/claims/resolve", {**first, "decision": "Declined", "note": "Evidence insufficient."})
+        fresh = {**claim, "requestId": str(uuid.uuid4())}
+        self.assertNotEqual(self.ok(self.owner, "/api/claims", fresh), first)
+        self.assertEqual(self.ok(self.owner, "/api/claims", duplicate), first)
+
+    def test_multiple_exact_origins_and_secure_cookie(self):
+        apex, www = "https://sstcfindit.me", "https://www.sstcfindit.me"
+        credentials = {"username": "test-staff", "password": self.password}
+        self.stop_server()
+        self.start_server(f"{apex}, {www}")
+        for origin in (apex, www):
+            self.staff.cookies.clear()
+            self.assertEqual(self.staff.call("/api/login", credentials, request_origin=origin)[0], 200)
+            self.assertEqual([(c.name, c.secure) for c in self.staff.cookies], [("findit_session", True)])
+        for origin in (self.origin, f"{www}/", "https://www.sstcfindit.me.example.invalid"):
+            self.assertEqual(self.staff.call("/api/login", credentials, request_origin=origin)[0], 403)
+
+        self.stop_server()
+        self.start_server(f"{www},{self.origin}")
+        self.staff.cookies.clear()
+        self.ok(self.staff, "/api/login", credentials)
+        self.assertEqual([(c.name, c.secure) for c in self.staff.cookies], [("findit_session", False)])
+
+
+class OriginConfiguration(unittest.TestCase):
+    def test_invalid_entries_fail_configuration(self):
+        for entry in ("", "ftp://example.invalid", "https://example.invalid/", "https://example.invalid?",
+                      "https://example.invalid#fragment", "https://user@example.invalid", "https://example.invalid:bad",
+                      "https://example.invalid:65536", "https://", "https://*.example.invalid"):
+            with self.subTest(entry=entry), self.assertRaisesRegex(SystemExit, "FINDIT_ORIGIN"):
+                configured_origins(f"https://sstcfindit.me,{entry}")
 
 
 if __name__ == "__main__":
